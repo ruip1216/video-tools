@@ -25,41 +25,78 @@ def load_whisper_model():
 
 
 def run_video_download(video_url):
-    """【通道A】下载网络视频，保留原视频用于抽帧，并剥离音频"""
-    output_name = "current_task_audio"
+    """【通道A：氪金玩家版】定制化 RapidAPI YouTube 商业节点"""
+    import requests
+    import os
+    import re
+    
+    st.write("🌐 正在呼叫 RapidAPI 商业下载节点，突破反爬风控...")
+    
+    try:
+        rapid_api_key = st.secrets["RAPID_API_KEY"]
+    except:
+        raise Exception("系统未检测到商业下载节点密钥，请在 Secrets 中配置 RAPID_API_KEY")
 
-    # 清理历史残留文件，防止干扰
-    for f in os.listdir("."):
-        if f.startswith(output_name):
-            try:
-                os.remove(f)
-            except:
-                pass
+    # 1. 智能预处理：从用户贴入的任意 YouTube 链接中提取纯净的 11 位 Video ID
+    video_id = video_url
+    match = re.search(r"(?:v=|\/shorts\/|\.be\/|\/)([0-9A-Za-z_-]{11})", video_url)
+    if match:
+        video_id = match.group(1)
 
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_name}.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '128',
-        }],
-        'keepvideo': True,  # 保留原视频，给后面的 OpenCV 截图用
-        'quiet': True,
-        'socket_timeout': 60,
-        'retries': 10,
+    # 替换为你测试成功的真实接口地址
+    api_url = "https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details"
+    api_host = "social-media-video-downloader.p.rapidapi.com"
+
+    # 根据该接口要求，参数名为 videoId
+    querystring = {"videoId": video_id}
+    headers = {
+        "x-rapidapi-key": rapid_api_key,
+        "x-rapidapi-host": api_host
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([video_url])
 
-    # 寻找保留下来的视频文件路径
-    video_file = None
-    for f in os.listdir("."):
-        if f.startswith(output_name) and not f.endswith(".mp3"):
-            video_file = f
-            break
+    try:
+        # 2. 向节点发送请求并获取你截图里的那种 JSON 数据
+        response = requests.get(api_url, headers=headers, params=querystring, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        
+        # 3. 极其优雅的 JSON 解析（直接分离拿取音视频流）
+        contents = data.get("contents", [{}])[0]
+        videos = contents.get("videos", [])
+        audios = contents.get("audios", [])
+        
+        if not videos or not audios:
+            raise Exception("API 节点未返回有效的视频或音频流数据，可能是私密视频。")
+            
+        # 提取最高画质的视频直链 和 最纯净的音频直链
+        video_direct_url = videos[0].get("url")
+        audio_direct_url = audios[0].get("url")
+        
+        st.write("✅ 节点突破成功！正在将音、视频流极速拉取到云端...")
+        
+        video_path = "current_task_video.mp4"
+        audio_path = "current_task_audio.mp3" # 顺势直接存为 mp3
+        
+        if os.path.exists(video_path): os.remove(video_path)
+        if os.path.exists(audio_path): os.remove(audio_path)
+        
+        # 4. 双线并发下载（抛弃 FFmpeg 剥离，速度拉满）
+        with requests.get(video_direct_url, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            with open(video_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    
+        with requests.get(audio_direct_url, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            with open(audio_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        
+        return audio_path, video_path
 
-    return f"{output_name}.mp3", video_file
+    except Exception as e:
+        raise Exception(f"商业节点拉取失败，请检查 API 额度或链接正确性: {e}")
 
 
 def extract_audio_from_local(uploaded_file):
