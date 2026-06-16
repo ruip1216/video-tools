@@ -80,14 +80,20 @@ def run_video_download(video_url):
         if os.path.exists(video_path): os.remove(video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
         
-        # 4. 双线并发下载（抛弃 FFmpeg 剥离，速度拉满）
-        with requests.get(video_direct_url, stream=True, timeout=60) as r:
+       # 4. 双线并发下载（带上顶级浏览器面具，防止底层 CDN 拦截）
+        dl_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Referer": "https://www.youtube.com/"
+        }
+        
+        with requests.get(video_direct_url, headers=dl_headers, stream=True, timeout=60) as r:
             r.raise_for_status()
             with open(video_path, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
                     
-        with requests.get(audio_direct_url, stream=True, timeout=60) as r:
+        with requests.get(audio_direct_url, headers=dl_headers, stream=True, timeout=60) as r:
             r.raise_for_status()
             with open(audio_path, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
